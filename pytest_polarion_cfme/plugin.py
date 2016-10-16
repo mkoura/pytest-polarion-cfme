@@ -21,28 +21,28 @@ def pytest_addoption(parser):
     group.addoption('--polarion-run',
                     default=None,
                     action='store',
-                    help='Polarion TestRun name (default: %default)')
+                    help="Polarion TestRun name (default: %default)")
     group.addoption('--polarion-project',
                     default=None,
                     action='store',
-                    help='Polarion project name (default taken from pylarion config file)')
+                    help="Polarion project name (default taken from pylarion config file)")
     group.addoption('--polarion-assignee',
                     default=None,
                     action='store',
-                    help='Select only tests assigned to specified id (default: %default)')
+                    help="Select only tests assigned to specified id (default: %default)")
     group.addoption('--polarion-always-report',
                     default=False,
                     action='store_true',
-                    help='Report all results, not only passed tests (default: %default)')
+                    help="Report all results, not only passed tests (default: %default)")
     group.addoption('--polarion-never-report',
                     default=False,
                     action='store_true',
-                    help='Never update Polarion regardless of test outcome (default: %default)')
+                    help="Never update Polarion regardless of test outcome (default: %default)")
     group.addoption('--polarion-caching-level',
                     action='store',
                     type=int,
                     default=0,
-                    help='Data caching aggressivity (default: %default)')
+                    help="Data caching aggressivity (default: %default)")
 
 
 def guess_polarion_id(item):
@@ -80,10 +80,10 @@ def polarion_query_test_case(cache, query_str, config):
         polarion_project = TestCase.default_project
 
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
-    query_str = '({}TEST_RECORDS:("{}/{}",@null) AND {})' \
+    query_str = '{}(TEST_RECORDS:("{}/{}",@null) AND {})' \
                 .format(assignee_str, polarion_project, polarion_run, query_str)
     test_cases_list = TestCase.query(project_id=polarion_project, query=query_str,
-                                     fields=["title", "work_item_id", "test_case_id"])
+                                     fields=['title', 'work_item_id', 'test_case_id'])
 
     for test_case in test_cases_list:
         unique_id = test_case.test_case_id
@@ -123,7 +123,7 @@ def polarion_collect_test_cases(items, config):
             # test case was not found
             test_case.polarion_work_item_id = None
 
-    print('Cached {} Polarion item(s) in {}s'.format(
+    print("Cached {} Polarion item(s) in {}s".format(
         len(cached_ids), round(time.time() - start_time, 2)))
 
 
@@ -162,18 +162,35 @@ def pytest_collection_modifyitems(items, config):
         items[:] = remaining
 
 
-def polarion_set_record(testrun, test_case):
-    """Do the updating of Test Case record in Polarion."""
+def polarion_set_record(testrun, testrun_record):
+    """Do the updating of TestRun record in Polarion."""
 
     try:
-        testrun.add_test_record_by_object(test_case)
+        testrun.add_test_record_by_object(testrun_record)
     except PylarionLibException:
         testrun.reload()
-        testrun.update_test_record_by_object(test_case.test_case_id, test_case)
+        testrun.update_test_record_by_object(testrun_record.test_case_id, testrun_record)
+
+
+def polarion_set_record_retry(testrun, testrun_record):
+    """Re-try to update Polarion in case of failure."""
+
+    for retry in range(3):
+        try:
+            if retry == 1:
+                testrun.reload()
+            polarion_set_record(testrun, testrun_record)
+            break
+        # pylint: disable=broad-except
+        except Exception:
+            time.sleep(0.5) # sleep and try again
+    else:
+        print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id),
+              end='')
 
 
 def pytest_runtest_protocol(item, nextitem):
-    """Check test result and update Test Run record in Polarion."""
+    """Check test result and update TestRun record in Polarion."""
 
     if item.config.getoption('polarion_run') is None \
         or item.config.getoption('polarion_never_report'):
@@ -200,7 +217,7 @@ def pytest_runtest_protocol(item, nextitem):
             testrun_record.executed_by = testrun_record.logged_in_user_id
             testrun_record.duration = report.duration
             testrun_record.comment = trace
-            polarion_set_record(testrun, testrun_record)
+            polarion_set_record_retry(testrun, testrun_record)
         elif report.when == 'setup' and report.skipped and report_always:
             testrun_record.result = 'blocked'
             testrun_record.executed_by = testrun_record.logged_in_user_id
@@ -208,6 +225,6 @@ def pytest_runtest_protocol(item, nextitem):
                 testrun_record.comment = item.get_marker('skipif').kwargs['reason']
             except AttributeError:
                 pass
-            polarion_set_record(testrun, testrun_record)
+            polarion_set_record_retry(testrun, testrun_record)
 
     return True
