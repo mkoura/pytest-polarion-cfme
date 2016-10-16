@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""pytest plugin for recording test results in Polarion."""
+"""pytest plugin for (de-)selecting tests based on Polarion TestRun
+and for recording test results in Polarion."""
 
 from __future__ import print_function, unicode_literals
 
@@ -80,7 +81,7 @@ def polarion_query_test_case(cache, query_str, config):
         polarion_project = TestCase.default_project
 
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
-    query_str = '{}(TEST_RECORDS:("{}/{}",@null) AND {})' \
+    query_str = '{}NOT status:inactive AND (TEST_RECORDS:("{}/{}",@null) AND {})' \
                 .format(assignee_str, polarion_project, polarion_run, query_str)
     test_cases_list = TestCase.query(project_id=polarion_project, query=query_str,
                                      fields=['title', 'work_item_id', 'test_case_id'])
@@ -181,6 +182,7 @@ def polarion_set_record_retry(testrun, testrun_record):
                 testrun.reload()
             polarion_set_record(testrun, testrun_record)
             break
+        # we really don't want to fail here
         # pylint: disable=broad-except
         except Exception:
             time.sleep(0.5) # sleep and try again
