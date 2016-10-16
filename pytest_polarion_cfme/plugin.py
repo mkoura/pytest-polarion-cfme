@@ -34,6 +34,10 @@ def pytest_addoption(parser):
                     default=False,
                     action='store_true',
                     help='Report all results, not only passed tests (default: %default)')
+    group.addoption('--polarion-never-report',
+                    default=False,
+                    action='store_true',
+                    help='Never update Polarion regardless of test outcome (default: %default)')
     group.addoption('--polarion-caching-level',
                     action='store',
                     type=int,
@@ -171,7 +175,8 @@ def polarion_set_record(testrun, test_case):
 def pytest_runtest_protocol(item, nextitem):
     """Check test result and update Test Run record in Polarion."""
 
-    if item.config.getoption('polarion_run') is None:
+    if item.config.getoption('polarion_run') is None \
+        or item.config.getoption('polarion_never_report'):
         return
 
     report_always = item.config.getoption('polarion_always_report')
