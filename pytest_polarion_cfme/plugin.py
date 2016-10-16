@@ -72,15 +72,15 @@ def polarion_query_test_case(cache, query_str, config):
 
     query_str = '(TEST_RECORDS:("{}/{}",@null) AND {})' \
                 .format(polarion_project, polarion_run, query_str)
-    test_cases = TestCase.query(project_id=polarion_project, query=query_str,
-                                fields=["title", "work_item_id", "test_case_id"])
+    test_cases_list = TestCase.query(project_id=polarion_project, query=query_str,
+                                     fields=["title", "work_item_id", "test_case_id"])
 
-    for case in test_cases:
-        new_id = case.test_case_id
-        param_index = case.title.rfind('[')
+    for test_case in test_cases_list:
+        unique_id = test_case.test_case_id
+        param_index = test_case.title.rfind('[')
         if param_index > 0:
-            new_id += case.title[param_index:]
-        cache[new_id] = case.work_item_id
+            unique_id += test_case.title[param_index:]
+        cache[unique_id] = test_case.work_item_id
 
 
 def polarion_collect_test_cases(items, config):
@@ -92,22 +92,22 @@ def polarion_collect_test_cases(items, config):
     cached_queries = set()
     start_time = time.time()
 
-    for item in items:
-        unique_id, test_case_id = guess_polarion_id(item)
+    for test_case in items:
+        unique_id, test_case_id = guess_polarion_id(test_case)
         if unique_id not in cached_ids:
             query_str = compile_query_str(test_case_id, caching_level)
             if query_str in cached_queries:
                 # we've already tried this query, no need to repeat
-                item.polarion_work_item_id = None
+                test_case.polarion_work_item_id = None
                 continue
             cached_queries.add(query_str)
             polarion_query_test_case(cached_ids, query_str, config)
 
         if unique_id in cached_ids:
-            item.polarion_work_item_id = cached_ids[unique_id]
+            test_case.polarion_work_item_id = cached_ids[unique_id]
         else:
-            # work item was not found
-            item.polarion_work_item_id = None
+            # test case was not found
+            test_case.polarion_work_item_id = None
 
     print('Cached {} Polarion item(s) in {}s'.format(
         len(cached_ids), round(time.time() - start_time, 2)))
@@ -139,8 +139,8 @@ def pytest_collection_modifyitems(items, config):
     polarion_collect_testrun(config)
     polarion_collect_test_cases(items, config)
 
-    remaining = [item for item in items if item.polarion_work_item_id
-                 and item.polarion_work_item_id in config.polarion_testrun_records]
+    remaining = [test_case for test_case in items if test_case.polarion_work_item_id
+                 and test_case.polarion_work_item_id in config.polarion_testrun_records]
 
     deselect = set(items) - set(remaining)
     if deselect:
@@ -165,13 +165,13 @@ def pytest_runtest_protocol(item, nextitem):
         return
 
     report_always = item.config.getoption('polarion_always_report')
-    reports = runtestprotocol(item, nextitem=nextitem)
+    reports_list = runtestprotocol(item, nextitem=nextitem)
 
     # get polarion objects
     testrun = item.config.polarion_testrun_obj
     testrun_record = item.config.polarion_testrun_records[item.polarion_work_item_id]
 
-    for report in reports:
+    for report in reports_list:
         if report.when == 'call':
             # build up traceback massage
             trace = ''
