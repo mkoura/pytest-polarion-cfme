@@ -26,6 +26,10 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help='Polarion project name (default taken from pylarion config file)')
+    group.addoption('--polarion-assignee',
+                    default=None,
+                    action='store',
+                    help='Select only tests assigned to specified id (default: %default)')
     group.addoption('--polarion-always-report',
                     default=False,
                     action='store_true',
@@ -66,12 +70,14 @@ def polarion_query_test_case(cache, query_str, config):
     """Query Polarion for matching Test Cases and save their IDs."""
 
     polarion_run = config.getoption('polarion_run')
+    assignee_id = config.getoption('polarion_assignee')
     polarion_project = config.getoption('polarion_project')
     if not polarion_project:
         polarion_project = TestCase.default_project
 
-    query_str = '(TEST_RECORDS:("{}/{}",@null) AND {})' \
-                .format(polarion_project, polarion_run, query_str)
+    assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
+    query_str = '({}TEST_RECORDS:("{}/{}",@null) AND {})' \
+                .format(assignee_str, polarion_project, polarion_run, query_str)
     test_cases_list = TestCase.query(project_id=polarion_project, query=query_str,
                                      fields=["title", "work_item_id", "test_case_id"])
 
@@ -86,7 +92,11 @@ def polarion_query_test_case(cache, query_str, config):
 def polarion_collect_test_cases(items, config):
     """Find corresponding Polarion work item ID for each test."""
 
+    assignee_id = config.getoption('polarion_assignee')
     caching_level = config.getoption('polarion_caching_level')
+    # ask for more test cases at once when assignee is specified
+    if assignee_id and caching_level == 0:
+        caching_level = 2
 
     cached_ids = {}
     cached_queries = set()
