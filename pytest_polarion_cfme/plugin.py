@@ -62,14 +62,18 @@ def compile_query_str(test_case_id, level=0):
     return ".".join(components[:new_len]) + '.*'
 
 
-def polarion_query_test_case(cache, query_str, polarion_project):
+def polarion_query_test_case(cache, query_str, config):
     """Query Polarion for matching Test Cases and save their IDs."""
 
+    polarion_run = config.getoption('polarion_run')
+    polarion_project = config.getoption('polarion_project')
+    if not polarion_project:
+        polarion_project = TestCase.default_project
+
+    query_str = '(TEST_RECORDS:("{}/{}",@null) AND {})' \
+                .format(polarion_project, polarion_run, query_str)
     test_cases = TestCase.query(project_id=polarion_project, query=query_str,
                                 fields=["title", "work_item_id", "test_case_id"])
-    if not test_cases:
-        pytest.fail('Failed to collect items from Polarion using query "{}".'
-                    .format(query_str))
 
     for case in test_cases:
         new_id = case.test_case_id
@@ -83,9 +87,6 @@ def polarion_collect_test_cases(items, config):
     """Find corresponding Polarion work item ID for each test."""
 
     caching_level = config.getoption('polarion_caching_level')
-    polarion_project = config.getoption('polarion_project')
-    if not polarion_project:
-        polarion_project = TestCase.default_project
 
     cached_ids = {}
     cached_queries = set()
@@ -100,7 +101,7 @@ def polarion_collect_test_cases(items, config):
                 item.polarion_work_item_id = None
                 continue
             cached_queries.add(query_str)
-            polarion_query_test_case(cached_ids, query_str, polarion_project)
+            polarion_query_test_case(cached_ids, query_str, config)
 
         if unique_id in cached_ids:
             item.polarion_work_item_id = cached_ids[unique_id]
@@ -108,7 +109,7 @@ def polarion_collect_test_cases(items, config):
             # work item was not found
             item.polarion_work_item_id = None
 
-    print('Cached {} polarion items in {}s'.format(
+    print('Cached {} Polarion item(s) in {}s'.format(
         len(cached_ids), round(time.time() - start_time, 2)))
 
 
