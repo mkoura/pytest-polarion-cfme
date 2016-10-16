@@ -139,8 +139,8 @@ def pytest_collection_modifyitems(items, config):
     polarion_collect_testrun(config)
     polarion_collect_test_cases(items, config)
 
-    remaining = [item for item in items
-                 if item.polarion_work_item_id in config.polarion_testrun_records]
+    remaining = [item for item in items if item.polarion_work_item_id
+                 and item.polarion_work_item_id in config.polarion_testrun_records]
 
     deselect = set(items) - set(remaining)
     if deselect:
