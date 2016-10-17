@@ -39,7 +39,9 @@ See complete help::
 
 Install
 -------
-Not in pypi yet. To manually install the package do::
+Install and configure pylarion first.
+
+This plugin is not in pypi yet. To manually install the package do::
 
     $ python setup.py sdist
-    $ pip install -U dist/pytest_polarion_cfme-<version>.tar.gz
+    $ pip install dist/pytest_polarion_cfme-<version>.tar.gz
