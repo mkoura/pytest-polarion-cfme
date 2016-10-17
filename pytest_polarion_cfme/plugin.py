@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""pytest plugin for (de-)selecting tests based on Polarion TestRun
+"""pytest plugin for collecting test cases based on Polarion TestRun
 and for recording test results in Polarion."""
 
 from __future__ import print_function, unicode_literals
@@ -31,11 +31,11 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help="Select only tests assigned to specified id (default: %default)")
-    group.addoption('--polarion-always-report',
+    group.addoption('--polarion-always-record',
                     default=False,
                     action='store_true',
                     help="Report all results, not only passed tests (default: %default)")
-    group.addoption('--polarion-never-report',
+    group.addoption('--polarion-never-record',
                     default=False,
                     action='store_true',
                     help="Never update Polarion regardless of test outcome (default: %default)")
@@ -195,10 +195,10 @@ def pytest_runtest_protocol(item, nextitem):
     """Check test result and update TestRun record in Polarion."""
 
     if item.config.getoption('polarion_run') is None \
-        or item.config.getoption('polarion_never_report'):
+        or item.config.getoption('polarion_never_record'):
         return
 
-    report_always = item.config.getoption('polarion_always_report')
+    record_always = item.config.getoption('polarion_always_record')
     reports_list = runtestprotocol(item, nextitem=nextitem)
 
     # get polarion objects
@@ -210,7 +210,7 @@ def pytest_runtest_protocol(item, nextitem):
             # build up traceback massage
             trace = ''
             if not report.passed:
-                if not report_always:
+                if not record_always:
                     continue
                 trace = '{}:{}\n{}'.format(report.location, report.when, report.longrepr)
 
@@ -220,7 +220,7 @@ def pytest_runtest_protocol(item, nextitem):
             testrun_record.duration = report.duration
             testrun_record.comment = trace
             polarion_set_record_retry(testrun, testrun_record)
-        elif report.when == 'setup' and report.skipped and report_always:
+        elif report.when == 'setup' and report.skipped and record_always:
             testrun_record.result = 'blocked'
             testrun_record.executed_by = testrun_record.logged_in_user_id
             try:
