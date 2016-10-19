@@ -13,7 +13,7 @@ setup(
             'pytest_polarion_cfme = pytest_polarion_cfme.plugin',
         ]
     },
-    install_requires=['pytest>=2.4.2'],
+    install_requires=['pytest>=2.4.2', 'suds'],
     setup_requires=['setuptools_scm'],
     classifiers=['Private :: Do Not Upload'],  # hack to avoid uploading to pypi
 )

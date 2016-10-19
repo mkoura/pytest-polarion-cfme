@@ -11,6 +11,7 @@ import pytest
 from pylarion.test_run import TestRun
 from pylarion.work_item import TestCase
 from pylarion.exceptions import PylarionLibException
+from suds import WebFault
 
 from _pytest.runner import runtestprotocol
 
@@ -71,6 +72,23 @@ def compile_query_str(test_case_id, level=0):
     return ".".join(components[:new_len]) + '.*'
 
 
+def wrap_query_retry(fun, *args, **kwargs):
+    """Re-try query when webservice call failed."""
+
+    # Sometimes query fails with "WebFault: Server raised fault: 'Not authorized.'".
+    # When re-tried, the same query often succeed.
+    for retry in range(5):
+        if retry != 0:
+            time.sleep(0.3) # sleep and try again
+        try:
+            return fun(*args, **kwargs)
+        except WebFault as detail:
+            pass
+
+    # all retries failed, bailing out
+    pytest.fail('Failed to query Polarion: {}'.format(detail))
+
+
 def polarion_query_test_case(cache, query_str, config):
     """Query Polarion for matching Test Cases and save their IDs."""
 
@@ -83,8 +101,9 @@ def polarion_query_test_case(cache, query_str, config):
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
     query_str = '{}NOT status:inactive AND (TEST_RECORDS:("{}/{}",@null) AND {})' \
                 .format(assignee_str, polarion_project, polarion_run, query_str)
-    test_cases_list = TestCase.query(project_id=polarion_project, query=query_str,
-                                     fields=['title', 'work_item_id', 'test_case_id'])
+    test_cases_list = wrap_query_retry(TestCase.query,
+                                       project_id=polarion_project, query=query_str,
+                                       fields=['title', 'work_item_id', 'test_case_id'])
 
     for test_case in test_cases_list:
         unique_id = test_case.test_case_id
@@ -136,7 +155,7 @@ def polarion_collect_testrun(config):
     if not polarion_project:
         polarion_project = TestRun.default_project
 
-    testrun = TestRun(project_id=polarion_project, test_run_id=polarion_run)
+    testrun = wrap_query_retry(TestRun, project_id=polarion_project, test_run_id=polarion_run)
     if not testrun:
         pytest.fail("Failed to collect TestRun '{}' from polarion.".format(polarion_run))
 
@@ -177,18 +196,18 @@ def polarion_set_record_retry(testrun, testrun_record):
     """Re-try to update Polarion in case of failure."""
 
     for retry in range(3):
+        if retry != 0:
+            time.sleep(0.5) # sleep and try again
         try:
             if retry == 1:
                 testrun.reload()
-            polarion_set_record(testrun, testrun_record)
-            break
+            return polarion_set_record(testrun, testrun_record)
         # we really don't want to fail here
         # pylint: disable=broad-except
         except Exception:
-            time.sleep(0.5) # sleep and try again
-    else:
-        print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id),
-              end='')
+            pass
+
+    print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id), end='')
 
 
 def pytest_runtest_protocol(item, nextitem):
