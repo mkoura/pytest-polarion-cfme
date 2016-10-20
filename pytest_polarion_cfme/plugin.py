@@ -13,8 +13,6 @@ from pylarion.work_item import TestCase
 from pylarion.exceptions import PylarionLibException
 from suds import WebFault
 
-from _pytest.runner import runtestprotocol
-
 
 def pytest_addoption(parser):
     """Add Polarion specific options to pytest."""
@@ -212,42 +210,40 @@ def polarion_set_record_retry(testrun, testrun_record):
     print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id), end='')
 
 
-def pytest_runtest_protocol(item, nextitem):
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item):
     """Check test result and update TestRun record in Polarion."""
-
     if item.config.getoption('polarion_run') is None \
         or item.config.getoption('polarion_never_record'):
         return
 
+    outcome = yield
+    report = outcome.get_result()
     record_always = item.config.getoption('polarion_always_record')
-    reports_list = runtestprotocol(item, nextitem=nextitem)
 
     # get polarion objects
     testrun = item.config.polarion_testrun_obj
     testrun_record = item.config.polarion_testrun_records[item.polarion_work_item_id]
 
-    for report in reports_list:
-        if report.when == 'call':
-            # build up traceback massage
-            trace = ''
-            if not report.passed:
-                if not record_always:
-                    continue
-                trace = '{}:{}\n{}'.format(report.location, report.when, report.longrepr)
+    if report.when == 'call':
+        # build up traceback massage
+        trace = ''
+        if not report.passed:
+            if not record_always:
+                return
+            trace = '{}:{}\n{}'.format(report.location, report.when, report.longrepr)
 
-            testrun_record.result = report.outcome
-            testrun_record.executed = datetime.datetime.now()
-            testrun_record.executed_by = testrun_record.logged_in_user_id
-            testrun_record.duration = report.duration
-            testrun_record.comment = trace
-            polarion_set_record_retry(testrun, testrun_record)
-        elif report.when == 'setup' and report.skipped and record_always:
-            testrun_record.result = 'blocked'
-            testrun_record.executed_by = testrun_record.logged_in_user_id
-            try:
-                testrun_record.comment = item.get_marker('skipif').kwargs['reason']
-            except AttributeError:
-                pass
-            polarion_set_record_retry(testrun, testrun_record)
-
-    return True
+        testrun_record.result = report.outcome
+        testrun_record.executed = datetime.datetime.now()
+        testrun_record.executed_by = testrun_record.logged_in_user_id
+        testrun_record.duration = report.duration
+        testrun_record.comment = trace
+        polarion_set_record_retry(testrun, testrun_record)
+    elif report.when == 'setup' and report.skipped and record_always:
+        testrun_record.result = 'blocked'
+        testrun_record.executed_by = testrun_record.logged_in_user_id
+        try:
+            testrun_record.comment = item.get_marker('skipif').kwargs['reason']
+        except AttributeError:
+            pass
+        polarion_set_record_retry(testrun, testrun_record)
