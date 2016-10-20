@@ -99,8 +99,10 @@ def polarion_query_test_case(cache, query_str, config):
         polarion_project = TestCase.default_project
 
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
-    query_str = '{}NOT status:inactive AND (TEST_RECORDS:("{}/{}",@null) AND {})' \
-                .format(assignee_str, polarion_project, polarion_run, query_str)
+    query_str = '{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
+                'AND (TEST_RECORDS:("{project}/{run}",@null) AND {query})' \
+                .format(assignee=assignee_str, project=polarion_project, run=polarion_run,
+                        query=query_str)
     test_cases_list = wrap_query_retry(TestCase.query,
                                        project_id=polarion_project, query=query_str,
                                        fields=['title', 'work_item_id', 'test_case_id'])
