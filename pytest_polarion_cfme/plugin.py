@@ -30,6 +30,20 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help="Select only tests assigned to specified id (default: %default)")
+    group.addoption('--polarion-collect-skipped',
+                    default=False,
+                    action='store_true',
+                    help="Collect also skipped tests, not only tests without record " \
+                         "(default: %default)")
+    group.addoption('--polarion-collect-failed',
+                    default=False,
+                    action='store_true',
+                    help="Collect also failed tests, not only tests without record " \
+                         "(default: %default)")
+    group.addoption('--polarion-skipped-record',
+                    default=False,
+                    action='store_true',
+                    help="Report skipped results, not only passed tests (default: %default)")
     group.addoption('--polarion-always-record',
                     default=False,
                     action='store_true',
@@ -37,7 +51,7 @@ def pytest_addoption(parser):
     group.addoption('--polarion-never-record',
                     default=False,
                     action='store_true',
-                    help="Never update Polarion regardless of test outcome (default: %default)")
+                    help="Never report results regardless of test outcome (default: %default)")
     group.addoption('--polarion-caching-level',
                     action='store',
                     type=int,
@@ -97,10 +111,15 @@ def polarion_query_test_case(cache, query_str, config):
         polarion_project = TestCase.default_project
 
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
+    test_records_tmplt = 'TEST_RECORDS:("{}/{}",'.format(polarion_project, polarion_run)
+    test_records_str = '{}@null)'.format(test_records_tmplt)
+    if config.getoption('polarion_collect_skipped'):
+        test_records_str += ' OR {}"blocked")'.format(test_records_tmplt)
+    if config.getoption('polarion_collect_failed'):
+        test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
     query_str = '{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
-                'AND (TEST_RECORDS:("{project}/{run}",@null) AND {query})' \
-                .format(assignee=assignee_str, project=polarion_project, run=polarion_run,
-                        query=query_str)
+                'AND (({test_records}) AND {query})' \
+                .format(assignee=assignee_str, test_records=test_records_str, query=query_str)
     test_cases_list = wrap_query_retry(TestCase.query,
                                        project_id=polarion_project, query=query_str,
                                        fields=['title', 'work_item_id', 'test_case_id'])
@@ -213,6 +232,7 @@ def polarion_set_record_retry(testrun, testrun_record):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item):
     """Check test result and update TestRun record in Polarion."""
+
     if item.config.getoption('polarion_run') is None \
         or item.config.getoption('polarion_never_record'):
         return
@@ -220,6 +240,7 @@ def pytest_runtest_makereport(item):
     outcome = yield
     report = outcome.get_result()
     record_always = item.config.getoption('polarion_always_record')
+    record_skipped = item.config.getoption('polarion_skipped_record')
 
     # get polarion objects
     testrun = item.config.polarion_testrun_obj
@@ -239,7 +260,7 @@ def pytest_runtest_makereport(item):
         testrun_record.duration = report.duration
         testrun_record.comment = trace
         polarion_set_record_retry(testrun, testrun_record)
-    elif report.when == 'setup' and report.skipped and record_always:
+    elif report.when == 'setup' and report.skipped and (record_always or record_skipped):
         testrun_record.result = 'blocked'
         testrun_record.executed_by = testrun_record.logged_in_user_id
         try:
