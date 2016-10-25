@@ -40,18 +40,19 @@ def pytest_addoption(parser):
                     action='store_true',
                     help="Collect also failed tests, not only tests without record " \
                          "(default: %default)")
-    group.addoption('--polarion-skipped-record',
+    group.addoption('--polarion-record-skipped',
                     default=False,
                     action='store_true',
-                    help="Report skipped results, not only passed tests (default: %default)")
-    group.addoption('--polarion-always-record',
+                    help="Record also skipped tests in addition to passed tests " \
+                         "(default: %default)")
+    group.addoption('--polarion-record-all',
                     default=False,
                     action='store_true',
-                    help="Report all results, not only passed tests (default: %default)")
-    group.addoption('--polarion-never-record',
+                    help="Record all tests, not only those that passed (default: %default)")
+    group.addoption('--polarion-record-none',
                     default=False,
                     action='store_true',
-                    help="Never report results regardless of test outcome (default: %default)")
+                    help="Never record any test outcome (default: %default)")
     group.addoption('--polarion-caching-level',
                     action='store',
                     type=int,
@@ -234,13 +235,13 @@ def pytest_runtest_makereport(item):
     """Check test result and update TestRun record in Polarion."""
 
     if item.config.getoption('polarion_run') is None \
-        or item.config.getoption('polarion_never_record'):
+        or item.config.getoption('polarion_record_none'):
         return
 
     outcome = yield
     report = outcome.get_result()
-    record_always = item.config.getoption('polarion_always_record')
-    record_skipped = item.config.getoption('polarion_skipped_record')
+    record_always = item.config.getoption('polarion_record_all')
+    record_skipped = item.config.getoption('polarion_record_skipped')
 
     # get polarion objects
     testrun = item.config.polarion_testrun_obj
