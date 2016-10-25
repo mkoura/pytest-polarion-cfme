@@ -24,13 +24,13 @@ Example commands
 From '<tests>' select and run such tests that have no result in Polarion TestRun
 '<run name>'. Record tests that passed::
 
-    $ py.test --polarion-run='<run name>' <tests>
+    $ py.test --polarion-run=<run name> <tests>
 
 From tests located in 'dir/with/tests/' select and run such tests that have no
 result in Polarion TestRun '<run name>', are assigned to person with '<id>' and
 their names contain 'string expression'. Record all results::
 
-    $ py.test --polarion-run=<run name> --polarion-assignee=<id> --polarion-always-record -k 'string expression' dir/with/tests/
+    $ py.test --polarion-run=<run name> --polarion-assignee=<id> --polarion-record-all -k 'string expression' dir/with/tests/
 
 See complete help::
 
@@ -39,6 +39,8 @@ See complete help::
 
 Install
 -------
+For CFME QE specific install instructions see https://mojo.redhat.com/docs/DOC-1098563 (accessible only from internal network).
+
 Install pylarion first::
 
     $ cd pylarion_repo
