@@ -234,11 +234,12 @@ def polarion_set_record_retry(testrun, testrun_record):
 def pytest_runtest_makereport(item):
     """Check test result and update TestRun record in Polarion."""
 
+    outcome = yield
+
     if item.config.getoption('polarion_run') is None \
         or item.config.getoption('polarion_record_none'):
         return
 
-    outcome = yield
     report = outcome.get_result()
     record_always = item.config.getoption('polarion_record_all')
     record_skipped = item.config.getoption('polarion_record_skipped')
