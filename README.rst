@@ -24,13 +24,13 @@ Example commands
 From '<tests>' select and run such tests that have no result in Polarion TestRun
 '<run name>'. Record tests that passed::
 
-    $ py.test --polarion-run=<run name> <tests>
+    $ py.test --polarion-run <run_name> <tests>
 
 From tests located in 'dir/with/tests/' select and run such tests that have no
 result in Polarion TestRun '<run name>', are assigned to person with '<id>' and
 their names contain 'string expression'. Record all results::
 
-    $ py.test --polarion-run=<run name> --polarion-assignee=<id> --polarion-record-all -k 'string expression' dir/with/tests/
+    $ py.test --polarion-run <run_name> --polarion-assignee <id> --polarion-record-all -k 'string expression' dir/with/tests/
 
 See complete help::
 

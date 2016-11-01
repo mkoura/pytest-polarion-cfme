@@ -60,32 +60,18 @@ def pytest_addoption(parser):
                     help="Data caching aggressivity (default: %default)")
 
 
-def guess_polarion_id(item):
-    """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion."""
+def pytest_configure(config):
+    """Make sure Polarion project name is set."""
 
-    unique_id = item.nodeid.replace('/', '.').replace('::()', '') \
-                           .replace('::', '.').replace('.py', '')
-    polarion_test_case_id = unique_id
-    param_index = polarion_test_case_id.rfind('[')
-    if param_index > 0:
-        polarion_test_case_id = polarion_test_case_id[:param_index]
-    return (unique_id, polarion_test_case_id)
-
-
-def compile_query_str(test_case_id, level=0):
-    """Compile query string for Test Case search."""
-
-    if level <= 0:
-        return test_case_id
-
-    components = test_case_id.split('.')
-    new_len = len(components) - level
-    if new_len < 2:
-        new_len = 2
-    return ".".join(components[:new_len]) + '.*'
+    if config.getoption('polarion_run') is None:
+        return
+    if config.getoption('polarion_project') is None:
+        config.option.polarion_project = TestRun.default_project
+    if config.getoption('polarion_project') is None:
+        pytest.fail('Polarion project name is not set.')
 
 
-def wrap_query_retry(fun, *args, **kwargs):
+def retry_query(fun, *args, **kwargs):
     """Re-try query when webservice call failed."""
 
     # Sometimes query fails with "WebFault: Server raised fault: 'Not authorized.'".
@@ -102,14 +88,37 @@ def wrap_query_retry(fun, *args, **kwargs):
     pytest.fail('Failed to query Polarion: {}'.format(detail))
 
 
-def polarion_query_test_case(cache, query_str, config):
-    """Query Polarion for matching Test Cases and save their IDs."""
+def guess_polarion_id(item):
+    """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion."""
+
+    unique_id = item.nodeid.replace('/', '.').replace('::()', '') \
+                           .replace('::', '.').replace('.py', '')
+    polarion_test_case_id = unique_id
+    param_index = polarion_test_case_id.rfind('[')
+    if param_index > 0:
+        polarion_test_case_id = polarion_test_case_id[:param_index]
+    return (unique_id, polarion_test_case_id)
+
+
+def compile_test_case_query(test_case_id, level=0):
+    """Compile query string for matching Test Cases."""
+
+    if level <= 0:
+        return test_case_id
+
+    components = test_case_id.split('.')
+    new_len = len(components) - level
+    if new_len < 2:
+        new_len = 2
+    return ".".join(components[:new_len]) + '.*'
+
+
+def compile_full_query(test_case_query, config):
+    """Compile query for Test Case search."""
 
     polarion_run = config.getoption('polarion_run')
-    assignee_id = config.getoption('polarion_assignee')
     polarion_project = config.getoption('polarion_project')
-    if not polarion_project:
-        polarion_project = TestCase.default_project
+    assignee_id = config.getoption('polarion_assignee')
 
     assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
     test_records_tmplt = 'TEST_RECORDS:("{}/{}",'.format(polarion_project, polarion_run)
@@ -118,14 +127,18 @@ def polarion_query_test_case(cache, query_str, config):
         test_records_str += ' OR {}"blocked")'.format(test_records_tmplt)
     if config.getoption('polarion_collect_failed'):
         test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
-    query_str = '{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
-                'AND (({test_records}) AND {query})' \
-                .format(assignee=assignee_str, test_records=test_records_str, query=query_str)
-    test_cases_list = wrap_query_retry(TestCase.query,
-                                       project_id=polarion_project, query=query_str,
-                                       fields=['title', 'work_item_id', 'test_case_id'])
 
-    for test_case in test_cases_list:
+    full_query = '{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
+                 'AND (({test_records}) AND {query})' \
+                 .format(assignee=assignee_str, test_records=test_records_str,
+                         query=test_case_query)
+    return full_query
+
+
+def cache_test_case_ids(cache, test_cases):
+    """Extend Test Case ids cache."""
+
+    for test_case in test_cases:
         unique_id = test_case.test_case_id
         param_index = test_case.title.rfind('[')
         if param_index > 0:
@@ -136,11 +149,14 @@ def polarion_query_test_case(cache, query_str, config):
 def polarion_collect_test_cases(items, config):
     """Find corresponding Polarion work item ID for each test."""
 
-    assignee_id = config.getoption('polarion_assignee')
-    caching_level = config.getoption('polarion_caching_level')
     # ask for more test cases at once when assignee is specified
-    if assignee_id and caching_level == 0:
-        caching_level = 2
+    caching_level = config.getoption('polarion_caching_level')
+    if config.getoption('polarion_assignee') and caching_level == 0:
+        num_items = len(items)
+        if num_items > 10:
+            caching_level = 2
+        elif num_items > 5:
+            caching_level = 1
 
     cached_ids = {}
     cached_queries = set()
@@ -149,13 +165,17 @@ def polarion_collect_test_cases(items, config):
     for test_case in items:
         unique_id, test_case_id = guess_polarion_id(test_case)
         if unique_id not in cached_ids:
-            query_str = compile_query_str(test_case_id, caching_level)
-            if query_str in cached_queries:
+            test_case_query = compile_test_case_query(test_case_id, caching_level)
+            if test_case_query in cached_queries:
                 # we've already tried this query, no need to repeat
                 test_case.polarion_work_item_id = None
                 continue
-            cached_queries.add(query_str)
-            polarion_query_test_case(cached_ids, query_str, config)
+            cached_queries.add(test_case_query)
+            full_query = compile_full_query(test_case_query, config)
+            test_cases_list = retry_query(TestCase.query, query=full_query,
+                                          project_id=config.getoption('polarion_project'),
+                                          fields=['title', 'work_item_id', 'test_case_id'])
+            cache_test_case_ids(cached_ids, test_cases_list)
 
         if unique_id in cached_ids:
             test_case.polarion_work_item_id = cached_ids[unique_id]
@@ -172,10 +192,8 @@ def polarion_collect_testrun(config):
 
     polarion_run = config.getoption('polarion_run')
     polarion_project = config.getoption('polarion_project')
-    if not polarion_project:
-        polarion_project = TestRun.default_project
 
-    testrun = wrap_query_retry(TestRun, project_id=polarion_project, test_run_id=polarion_run)
+    testrun = retry_query(TestRun, project_id=polarion_project, test_run_id=polarion_run)
     if not testrun:
         pytest.fail("Failed to collect TestRun '{}' from polarion.".format(polarion_run))
 
@@ -224,7 +242,7 @@ def polarion_set_record_retry(testrun, testrun_record):
             return polarion_set_record(testrun, testrun_record)
         # we really don't want to fail here
         # pylint: disable=broad-except
-        except Exception:
+        except (WebFault, Exception):
             pass
 
     print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id), end='')
