@@ -48,7 +48,11 @@ Install pylarion first::
 
 Create and edit pylarion config file ~/.pylarion according to Pylarion install instructions.
 
-Install this plugin (it's not in pypi yet)::
+Install this plugin::
 
     $ cd pytest-polarion-cfme_repo
     $ pip install .
+
+or without cloning the repo::
+
+   $ pip install https://github.com/mkoura/pytest-polarion-cfme/archive/master.tar.gz
