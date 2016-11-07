@@ -30,29 +30,25 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help="Select only tests assigned to specified id (default: %default)")
-    group.addoption('--polarion-collect-skipped',
+    group.addoption('--polarion-collect-blocked',
                     default=False,
                     action='store_true',
-                    help="Collect also skipped tests, not only tests without record "
+                    help="Collect also blocked tests, not only tests without record "
                          "(default: %default)")
     group.addoption('--polarion-collect-failed',
                     default=False,
                     action='store_true',
                     help="Collect also failed tests, not only tests without record "
                          "(default: %default)")
-    group.addoption('--polarion-record-skipped',
+    group.addoption('--polarion-dont-record-blocked',
                     default=False,
                     action='store_true',
-                    help="Record also skipped tests in addition to passed tests "
+                    help="Don't record blocked tests, record only passed tests "
                          "(default: %default)")
-    group.addoption('--polarion-record-all',
+    group.addoption('--polarion-dont-record',
                     default=False,
                     action='store_true',
-                    help="Record all tests, not only those that passed (default: %default)")
-    group.addoption('--polarion-record-none',
-                    default=False,
-                    action='store_true',
-                    help="Never record any test outcome (default: %default)")
+                    help="Don't record any test outcome (default: %default)")
     group.addoption('--polarion-prefetch-level',
                     action='store',
                     type=int,
@@ -164,7 +160,7 @@ class PolarionCFMEPlugin(object):
         test_records_tmplt = 'TEST_RECORDS:("{}/{}",' \
                              .format(polarion_project, polarion_run)
         test_records_str = '{}@null)'.format(test_records_tmplt)
-        if self.config.getoption('polarion_collect_skipped'):
+        if self.config.getoption('polarion_collect_blocked'):
             test_records_str += ' OR {}"blocked")'.format(test_records_tmplt)
         if self.config.getoption('polarion_collect_failed'):
             test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
@@ -270,35 +266,36 @@ class PolarionCFMEPlugin(object):
 
         outcome = yield
 
-        if self.config.getoption('polarion_record_none'):
+        if self.config.getoption('polarion_dont_record'):
             return
 
         report = outcome.get_result()
-        record_always = self.config.getoption('polarion_record_all')
-        record_skipped = self.config.getoption('polarion_record_skipped')
+        result = None
 
-        # get polarion objects
-        testrun_record = self.polarion_testrun_records[item.polarion_work_item_id]
+        if report.when == 'call' and report.passed:
+            comment = "Test Result: passed"
+            result = 'passed'
+        elif report.when == 'setup' and report.skipped:
+            if self.config.getoption('polarion_dont_record_blocked'):
+                return
 
-        if report.when == 'call':
-            # build up traceback massage
-            trace = ''
-            if not report.passed:
-                if not record_always:
-                    return
-                trace = '{}:{}\n{}'.format(report.location, report.when, report.longrepr)
+            try:
+                comment = item.get_marker('skipif').kwargs['reason']
+            except AttributeError:
+                comment = None
+            if not comment and report.longrepr \
+                    and "Skipping due to these blockers" in report.longrepr[2]:
+                comment = report.longrepr[2]
 
-            testrun_record.result = report.outcome
+            # found reason to mark test as 'blocked' in Polarion
+            if comment:
+                result = 'blocked'
+
+        if result:
+            testrun_record = self.polarion_testrun_records[item.polarion_work_item_id]
+            testrun_record.result = result
+            testrun_record.comment = comment
+            testrun_record.duration = report.duration
             testrun_record.executed = datetime.datetime.now()
             testrun_record.executed_by = testrun_record.logged_in_user_id
-            testrun_record.duration = report.duration
-            testrun_record.comment = trace
-            polarion_set_record_retry(self.polarion_testrun_obj, testrun_record)
-        elif report.when == 'setup' and report.skipped and (record_always or record_skipped):
-            testrun_record.result = 'blocked'
-            testrun_record.executed_by = testrun_record.logged_in_user_id
-            try:
-                testrun_record.comment = item.get_marker('skipif').kwargs['reason']
-            except AttributeError:
-                pass
             polarion_set_record_retry(self.polarion_testrun_obj, testrun_record)
