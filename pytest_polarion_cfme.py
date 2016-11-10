@@ -139,6 +139,7 @@ class PolarionCFMEPlugin(object):
         self.config = config
         self.polarion_testrun_records = None
         self.polarion_testrun_obj = None
+        self.full_query_tmplt = None
         self.importance_list = self._get_importance(config)
 
     @staticmethod
@@ -177,26 +178,34 @@ class PolarionCFMEPlugin(object):
     def _compile_full_query(self, test_case_query):
         """Compile query for Test Case search."""
 
-        assignee_id = self.config.getoption('polarion_assignee')
-        polarion_run = self.config.getoption('polarion_run')
-        polarion_project = self.config.getoption('polarion_project')
+        def get_full_query_tmplt():
+            """Get template for Test Case query."""
 
-        importance_str = 'caseimportance.KEY:({}) AND ' \
-                         .format(' '.join(self.importance_list)) if self.importance_list else ''
-        assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
-        test_records_tmplt = 'TEST_RECORDS:("{}/{}",' \
-                             .format(polarion_project, polarion_run)
-        test_records_str = '{}@null)'.format(test_records_tmplt)
-        if self.config.getoption('polarion_collect_blocked'):
-            test_records_str += ' OR {}"blocked")'.format(test_records_tmplt)
-        if self.config.getoption('polarion_collect_failed'):
-            test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
+            assignee_id = self.config.getoption('polarion_assignee')
+            polarion_run = self.config.getoption('polarion_run')
+            polarion_project = self.config.getoption('polarion_project')
 
-        full_query = '{importance}{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
-                     'AND (({test_records}) AND {query})' \
-                     .format(importance=importance_str, assignee=assignee_str,
-                             test_records=test_records_str, query=test_case_query)
-        return full_query
+            importance_str = 'caseimportance.KEY:({}) AND ' \
+                             .format(' '.join(self.importance_list)) if self.importance_list else ''
+            assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
+            test_records_tmplt = 'TEST_RECORDS:("{}/{}",' \
+                                 .format(polarion_project, polarion_run)
+            test_records_str = '{}@null)'.format(test_records_tmplt)
+            if self.config.getoption('polarion_collect_blocked'):
+                test_records_str += ' OR {}"blocked")'.format(test_records_tmplt)
+            if self.config.getoption('polarion_collect_failed'):
+                test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
+
+            full_query_tmplt = '{importance}{assignee}NOT status:inactive AND ' \
+                               'caseautomation.KEY:automated AND (({test_records}) AND ' \
+                               .format(importance=importance_str, assignee=assignee_str,
+                                       test_records=test_records_str)
+            full_query_tmplt += '{})'
+            return full_query_tmplt
+
+        if not self.full_query_tmplt:
+            self.full_query_tmplt = get_full_query_tmplt()
+        return self.full_query_tmplt.format(test_case_query)
 
     @staticmethod
     def _cache_test_case_ids(cache, test_cases):
@@ -249,8 +258,8 @@ class PolarionCFMEPlugin(object):
                     test_case.polarion_work_item_id = None
                     continue
                 cached_queries.add(test_case_query)
-                full_query = self._compile_full_query(test_case_query)
-                test_cases_list = retry_query(TestCase.query, query=full_query,
+                test_cases_list = retry_query(TestCase.query,
+                                              query=self._compile_full_query(test_case_query),
                                               project_id=self.config.getoption('polarion_project'),
                                               fields=['title', 'work_item_id', 'test_case_id'])
                 self._cache_test_case_ids(cached_ids, test_cases_list)
@@ -290,7 +299,7 @@ class PolarionCFMEPlugin(object):
             self.config.hook.pytest_deselected(items=deselect)
             items[:] = remaining
 
-        print("Deselected {} items using Polarion, will run {} items".format(
+        print("Deselected {} tests using Polarion, will run {} tests".format(
             len(deselect), len(items)))
 
     @pytest.hookimpl(hookwrapper=True)
