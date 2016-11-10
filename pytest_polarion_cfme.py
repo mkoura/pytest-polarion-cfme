@@ -30,6 +30,11 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help="Select only tests assigned to specified id (default: %default)")
+    group.addoption('--polarion-importance',
+                    default='any',
+                    action='store',
+                    choices=['critical', 'high', 'medium', 'low', 'high+', 'medium+', 'any'],
+                    help="Collect tests with specified importance (default: %default)")
     group.addoption('--polarion-collect-blocked',
                     default=False,
                     action='store_true',
@@ -53,7 +58,7 @@ def pytest_addoption(parser):
                     action='store',
                     type=int,
                     default=-1,
-                    help="Data prefetching aggressivity (0-2; default: no prefetching)")
+                    help="Data prefetching aggressivity (0-4; default: no prefetching)")
 
 
 def pytest_configure(config):
@@ -134,9 +139,29 @@ class PolarionCFMEPlugin(object):
         self.config = config
         self.polarion_testrun_records = None
         self.polarion_testrun_obj = None
+        self.importance_list = self._get_importance(config)
 
     @staticmethod
-    def compile_test_case_query(test_case_id, level):
+    def _get_importance(config):
+        """List of importance levels to be used in Test Case search."""
+
+        importance = config.getoption('polarion_importance')
+        if not importance or importance == 'any':
+            return []
+
+        importance_list = []
+        if '+' in importance:
+            for level in ('critical', 'high', 'medium', 'low'):
+                importance_list.append(level)
+                if importance == level + '+':
+                    break
+        else:
+            importance_list.append(importance)
+
+        return importance_list
+
+    @staticmethod
+    def _compile_test_case_query(test_case_id, level):
         """Compile query string for matching Test Cases."""
 
         if level <= 0:
@@ -149,13 +174,15 @@ class PolarionCFMEPlugin(object):
 
         return ".".join(components[:new_len]) + '.*'
 
-    def compile_full_query(self, test_case_query):
+    def _compile_full_query(self, test_case_query):
         """Compile query for Test Case search."""
 
         assignee_id = self.config.getoption('polarion_assignee')
         polarion_run = self.config.getoption('polarion_run')
         polarion_project = self.config.getoption('polarion_project')
 
+        importance_str = 'caseimportance.KEY:({}) AND ' \
+                         .format(' '.join(self.importance_list)) if self.importance_list else ''
         assignee_str = 'assignee.id:{} AND '.format(assignee_id) if assignee_id else ''
         test_records_tmplt = 'TEST_RECORDS:("{}/{}",' \
                              .format(polarion_project, polarion_run)
@@ -165,14 +192,14 @@ class PolarionCFMEPlugin(object):
         if self.config.getoption('polarion_collect_failed'):
             test_records_str += ' OR {}"failed")'.format(test_records_tmplt)
 
-        full_query = '{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
+        full_query = '{importance}{assignee}NOT status:inactive AND caseautomation.KEY:automated ' \
                      'AND (({test_records}) AND {query})' \
-                     .format(assignee=assignee_str, test_records=test_records_str,
-                             query=test_case_query)
+                     .format(importance=importance_str, assignee=assignee_str,
+                             test_records=test_records_str, query=test_case_query)
         return full_query
 
     @staticmethod
-    def cache_test_case_ids(cache, test_cases):
+    def _cache_test_case_ids(cache, test_cases):
         """Extend Test Case ids cache."""
 
         for test_case in test_cases:
@@ -182,7 +209,7 @@ class PolarionCFMEPlugin(object):
                 unique_id += test_case.title[param_index:]
             cache[unique_id] = test_case.work_item_id
 
-    def get_prefetch_level(self, num_items):
+    def _get_prefetch_level(self, num_items):
         """Data prefetching aggressivity - for how many test cases to ask in single query."""
 
         level = self.config.getoption('polarion_prefetch_level')
@@ -191,12 +218,16 @@ class PolarionCFMEPlugin(object):
             if self.config.getoption('polarion_assignee'):
                 # total number of test cases is limited by specifying assignee
                 # so we can set prefetching level higher
-                if num_items > 10:
+                if num_items > 30:
+                    level = 3
+                elif num_items > 10:
                     level = 2
                 elif num_items > 5:
                     level = 1
             else:
-                if num_items > 10:
+                if num_items > 100:
+                    level = 2
+                elif num_items > 10:
                     level = 1
 
         return level
@@ -204,7 +235,7 @@ class PolarionCFMEPlugin(object):
     def polarion_collect_test_cases(self, items):
         """Find corresponding Polarion work item ID for each test."""
 
-        prefetch_level = self.get_prefetch_level(len(items))
+        prefetch_level = self._get_prefetch_level(len(items))
         cached_ids = {}
         cached_queries = set()
         start_time = time.time()
@@ -212,17 +243,17 @@ class PolarionCFMEPlugin(object):
         for test_case in items:
             unique_id, test_case_id = guess_polarion_id(test_case)
             if unique_id not in cached_ids:
-                test_case_query = self.compile_test_case_query(test_case_id, prefetch_level)
+                test_case_query = self._compile_test_case_query(test_case_id, prefetch_level)
                 if test_case_query in cached_queries:
                     # we've already tried this query, no need to repeat
                     test_case.polarion_work_item_id = None
                     continue
                 cached_queries.add(test_case_query)
-                full_query = self.compile_full_query(test_case_query)
+                full_query = self._compile_full_query(test_case_query)
                 test_cases_list = retry_query(TestCase.query, query=full_query,
                                               project_id=self.config.getoption('polarion_project'),
                                               fields=['title', 'work_item_id', 'test_case_id'])
-                self.cache_test_case_ids(cached_ids, test_cases_list)
+                self._cache_test_case_ids(cached_ids, test_cases_list)
 
             if unique_id in cached_ids:
                 test_case.polarion_work_item_id = cached_ids[unique_id]
@@ -230,8 +261,8 @@ class PolarionCFMEPlugin(object):
                 # test case was not found
                 test_case.polarion_work_item_id = None
 
-        print("Fetched {} Polarion item(s) in {}s".format(
-            len(cached_ids), round(time.time() - start_time, 2)))
+        print("Fetched {} Polarion items in {} queries in {}s".format(
+            len(cached_ids), len(cached_queries), round(time.time() - start_time, 2)))
 
     def polarion_collect_testrun(self):
         """Collect all work item IDs in specified testrun."""
@@ -247,18 +278,20 @@ class PolarionCFMEPlugin(object):
         self.polarion_testrun_obj = testrun
 
     def pytest_collection_modifyitems(self, items):
-        """Deselect tests that are not present in testrun."""
+        """Deselect tests that don't match Polarion query."""
 
         self.polarion_collect_testrun()
         self.polarion_collect_test_cases(items)
 
-        remaining = [test_case for test_case in items if test_case.polarion_work_item_id
-                     and test_case.polarion_work_item_id in self.polarion_testrun_records]
+        remaining = [test_case for test_case in items if test_case.polarion_work_item_id]
 
         deselect = set(items) - set(remaining)
         if deselect:
             self.config.hook.pytest_deselected(items=deselect)
             items[:] = remaining
+
+        print("Deselected {} items using Polarion, will run {} items".format(
+            len(deselect), len(items)))
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item):

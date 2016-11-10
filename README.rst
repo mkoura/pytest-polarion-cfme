@@ -27,10 +27,10 @@ From '<tests>' select and run such tests that have no result in Polarion Test Ru
     $ py.test --polarion-run <run_name> <tests>
 
 From tests located in 'dir/with/tests/' select and run such tests that have no
-result in Polarion Test Run '<run name>', are assigned to person with '<id>' and
-their names contain 'string expression'::
+result in Polarion Test Run '<run name>', are assigned to person with '<id>',
+their names contain 'string expression' and their importance is medium or higher::
 
-    $ py.test --polarion-run <run_name> --polarion-assignee <id> -k 'string expression' dir/with/tests/
+    $ py.test --polarion-run <run_name> --polarion-assignee <id> --polarion-importance medium+ -k 'string expression' dir/with/tests/
 
 See complete help::
 
