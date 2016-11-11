@@ -299,7 +299,7 @@ class PolarionCFMEPlugin(object):
             self.config.hook.pytest_deselected(items=deselect)
             items[:] = remaining
 
-        print("Deselected {} tests using Polarion, will run {} tests".format(
+        print("Deselected {} tests using Polarion, will continue with {} tests".format(
             len(deselect), len(items)))
 
     @pytest.hookimpl(hookwrapper=True)
