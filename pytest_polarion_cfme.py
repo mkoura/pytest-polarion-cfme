@@ -6,12 +6,17 @@ from __future__ import print_function, unicode_literals
 
 import datetime
 import time
+import ssl
 import pytest
 
 from pylarion.test_run import TestRun
 from pylarion.work_item import TestCase
 from pylarion.exceptions import PylarionLibException
 from suds import WebFault
+
+
+# workaround for old cert shipped with Pylarion
+ssl._create_default_https_context = ssl._create_unverified_context
 
 
 def pytest_addoption(parser):
@@ -79,9 +84,9 @@ def retry_query(fun, *args, **kwargs):
 
     # Sometimes query fails with "WebFault: Server raised fault: 'Not authorized.'".
     # When re-tried, the same query often succeed.
-    for retry in range(5):
+    for retry in range(10):
         if retry != 0:
-            time.sleep(0.3)  # sleep and try again
+            time.sleep(0.5)  # sleep and try again
         try:
             return fun(*args, **kwargs)
         except WebFault as detail:
@@ -129,7 +134,7 @@ def polarion_set_record_retry(testrun, testrun_record):
         except (WebFault, Exception):
             pass
 
-    print("  {}: failed to write result to Polarion!".format(testrun_record.test_case_id), end='')
+    print(" {}: failed to write result to Polarion! ".format(testrun_record.test_case_id), end='')
 
 
 class PolarionCFMEPlugin(object):
@@ -173,7 +178,14 @@ class PolarionCFMEPlugin(object):
         if new_len < 2:
             new_len = 2
 
-        return ".".join(components[:new_len]) + '.*'
+        return '.'.join(components[:new_len]) + '.*'
+
+    @staticmethod
+    def _get_matching_queries(test_case_id):
+        """For given Test Case create list of all possible queries that will match."""
+
+        components = test_case_id.split('.')
+        return ['.'.join(components[:length]) + '.*' for length in range(2, len(components))]
 
     def _compile_full_query(self, test_case_query):
         """Compile query for Test Case search."""
@@ -252,11 +264,12 @@ class PolarionCFMEPlugin(object):
         for test_case in items:
             unique_id, test_case_id = guess_polarion_id(test_case)
             if unique_id not in cached_ids:
-                test_case_query = self._compile_test_case_query(test_case_id, prefetch_level)
-                if test_case_query in cached_queries:
-                    # we've already tried this query, no need to repeat
+                matching_queries = self._get_matching_queries(test_case_id)
+                if any(query in cached_queries for query in matching_queries):
+                    # we've already tried this or matching query, no need to repeat
                     test_case.polarion_work_item_id = None
                     continue
+                test_case_query = self._compile_test_case_query(test_case_id, prefetch_level)
                 cached_queries.add(test_case_query)
                 test_cases_list = retry_query(TestCase.query,
                                               query=self._compile_full_query(test_case_query),
@@ -315,7 +328,7 @@ class PolarionCFMEPlugin(object):
         result = None
 
         if report.when == 'call' and report.passed:
-            comment = "Test Result: passed"
+            comment = "Test Result: PASSED"
             result = 'passed'
         elif report.when == 'setup' and report.skipped:
             if self.config.getoption('polarion_dont_record_blocked'):
