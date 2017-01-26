@@ -16,6 +16,7 @@ from suds import WebFault
 
 
 # workaround for old cert shipped with Pylarion
+# pylint: disable=protected-access
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
@@ -28,9 +29,9 @@ def pytest_addoption(parser):
                     action='store',
                     help="Polarion Test Run name (default: %default)")
     group.addoption('--polarion-project',
-                    default=None,
+                    default='RHCF3',
                     action='store',
-                    help="Polarion project name (default taken from pylarion config file)")
+                    help="Polarion project name (default: %default)")
     group.addoption('--polarion-assignee',
                     default=None,
                     action='store',
@@ -71,10 +72,6 @@ def pytest_configure(config):
 
     if config.getoption('polarion_run') is None:
         return
-    if config.getoption('polarion_project') is None:
-        config.option.polarion_project = TestRun.default_project
-    if config.getoption('polarion_project') is None:
-        pytest.fail("Polarion project name is not set.")
 
     config.pluginmanager.register(PolarionCFMEPlugin(config), '_polarion_cfme')
 
