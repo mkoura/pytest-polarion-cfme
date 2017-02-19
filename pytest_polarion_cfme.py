@@ -81,9 +81,9 @@ def retry_query(fun, *args, **kwargs):
 
     # Sometimes query fails with "WebFault: Server raised fault: 'Not authorized.'".
     # When re-tried, the same query often succeed.
-    for retry in range(10):
+    for retry in range(15):
         if retry != 0:
-            time.sleep(0.5)  # sleep and try again
+            time.sleep(retry)  # sleep and try again
         try:
             return fun(*args, **kwargs)
         except WebFault as detail:
@@ -119,9 +119,9 @@ def polarion_set_record(testrun, testrun_record):
 def polarion_set_record_retry(testrun, testrun_record):
     """Re-try to update Polarion in case of failure."""
 
-    for retry in range(3):
+    for retry in range(5):
         if retry != 0:
-            time.sleep(0.5)  # sleep and try again
+            time.sleep(1)  # sleep and try again
         try:
             if retry == 1:
                 testrun.reload()
