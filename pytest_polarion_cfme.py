@@ -7,6 +7,7 @@ from __future__ import print_function, unicode_literals
 import datetime
 import time
 import ssl
+import re
 import pytest
 
 from pylarion.test_run import TestRun
@@ -137,12 +138,20 @@ def polarion_set_record_retry(testrun, testrun_record):
 class PolarionCFMEPlugin(object):
     """Get Test Cases and Test Run info and record test results in Polarion."""
 
+    SEARCHES = [
+        'Skipping due to these blockers',
+        'BZ ?[0-9]+',
+        'GH ?#?[0-9]+',
+        'GH#ManageIQ',
+    ]
+
     def __init__(self, config):
         self.config = config
         self.polarion_testrun_records = None
         self.polarion_testrun_obj = None
         self.full_query_tmplt = None
         self.importance_list = self._get_importance(config)
+        self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
     def _get_importance(config):
@@ -335,9 +344,10 @@ class PolarionCFMEPlugin(object):
                 comment = item.get_marker('skipif').kwargs['reason']
             except AttributeError:
                 comment = None
-            if not comment and report.longrepr \
-                    and "Skipping due to these blockers" in report.longrepr[2]:
-                comment = report.longrepr[2]
+            if not comment and report.longrepr:
+                reason = report.longrepr[2]
+                if re.match(self.valid_skips, reason):
+                    comment = reason
 
             # found reason to mark test as 'blocked' in Polarion
             if comment:
