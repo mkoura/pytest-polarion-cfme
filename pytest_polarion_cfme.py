@@ -55,17 +55,17 @@ class PolarionCFMEPlugin(object):
         self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
-    def _cache_test_case_ids(cache, test_cases):
+    def _cache_testcase_ids(cache, testcases):
         """Extends Test Case ids cache."""
-        for test_case in test_cases:
-            work_item_id, title, test_case_id = test_case
-            unique_id = test_case_id
+        for testcase in testcases:
+            work_item_id, title, testcase_id = testcase
+            unique_id = testcase_id
             param_index = title.rfind('[')
             if param_index > 0:
                 unique_id += title[param_index:]
             cache[unique_id] = work_item_id
 
-    def guess_polarion_id(self, item):
+    def guess_unique_id(self, item):
         """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion."""
         unique_id = (item.nodeid.
                      replace('/', '.').
@@ -75,36 +75,36 @@ class PolarionCFMEPlugin(object):
         start = unique_id.find(self.TESTCASE_ID_BASE)
         if start > 0:
             unique_id = unique_id[start:]
-        polarion_test_case_id = unique_id
-        param_index = polarion_test_case_id.rfind('[')
+        polarion_testcase_id = unique_id
+        param_index = polarion_testcase_id.rfind('[')
         if param_index > 0:
-            polarion_test_case_id = polarion_test_case_id[:param_index]
+            polarion_testcase_id = polarion_testcase_id[:param_index]
 
         return unique_id
 
-    def polarion_collect_test_cases(self, items):
+    def db_collect_testcases(self, items):
         """Finds corresponding Polarion work item ID for each test."""
         cur = self.conn.cursor()
         cur.execute(
             "SELECT id, title, testcaseid FROM testcases WHERE verdict is null or verdict = ''")
-        test_cases_list = cur.fetchall()
+        testcases_list = cur.fetchall()
         cached_ids = {}
-        self._cache_test_case_ids(cached_ids, test_cases_list)
+        self._cache_testcase_ids(cached_ids, testcases_list)
 
         found = []
-        for test_case in items:
-            unique_id = self.guess_polarion_id(test_case)
+        for testcase in items:
+            unique_id = self.guess_unique_id(testcase)
             work_item_id = cached_ids.get(unique_id)
             if work_item_id:
-                test_case.polarion_work_item_id = work_item_id
-                found.append(test_case)
+                testcase.polarion_work_item_id = work_item_id
+                found.append(testcase)
 
         return found
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, items):
         """Deselects tests that are not in the database."""
-        remaining = self.polarion_collect_test_cases(items)
+        remaining = self.db_collect_testcases(items)
 
         deselect = set(items) - set(remaining)
         if deselect:
@@ -116,10 +116,16 @@ class PolarionCFMEPlugin(object):
 
     def testcase_set_record(self, work_item_id, **kwargs):
         """Updates Test Case record in database."""
-        sets = ', '.join(["{} = '{}'".format(k, v) for k, v in kwargs.iteritems() if v])
+        values = []
+        keys_bind = []
+        for key, value in kwargs.iteritems():
+            if value:
+                keys_bind.append('{} = ?'.format(key))
+                values.append(value)
+        values.append(work_item_id)  # for 'WHERE' clause
         cur = self.conn.cursor()
-        cur.execute(
-            "UPDATE testcases SET {sets} WHERE id = '{wid}'".format(sets=sets, wid=work_item_id))
+        cur.execute("UPDATE testcases SET {} WHERE id = ?".format(','.join(keys_bind)), values)
+        self.conn.commit()
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item):
@@ -142,7 +148,7 @@ class PolarionCFMEPlugin(object):
                 if re.match(self.valid_skips, reason):
                     comment = reason
 
-            # found reason to mark test as 'blocked' in Polarion
+            # found reason to mark test as 'skipped'
             if comment:
                 result = 'skipped'
 
