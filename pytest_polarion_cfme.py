@@ -26,7 +26,7 @@ def pytest_configure(config):
     if config.getoption('db') is None:
         return
 
-    config.pluginmanager.register(PolarionCFMEPlugin(config), '_polarion_cfme')
+    config.pluginmanager.register(PolarionCFMEPlugin(config.getoption('db')), '_polarion_cfme')
 
 
 def create_db_connection(db_file):
@@ -49,9 +49,8 @@ class PolarionCFMEPlugin(object):
     ]
     TESTCASE_ID_BASE = 'cfme.tests'
 
-    def __init__(self, config):
-        self.config = config
-        self.conn = create_db_connection(config.getoption('db'))
+    def __init__(self, db_file):
+        self.conn = create_db_connection(db_file)
         self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
@@ -98,13 +97,13 @@ class PolarionCFMEPlugin(object):
         return found
 
     @pytest.hookimpl(trylast=True)
-    def pytest_collection_modifyitems(self, items):
+    def pytest_collection_modifyitems(self, config, items):
         """Deselects tests that are not in the database."""
         remaining = self.db_collect_testcases(items)
 
         deselect = set(items) - set(remaining)
         if deselect:
-            self.config.hook.pytest_deselected(items=deselect)
+            config.hook.pytest_deselected(items=deselect)
             items[:] = remaining
 
         print("Deselected {} tests using database, will continue with {} tests".format(
