@@ -118,6 +118,8 @@ class PolarionCFMEPlugin(object):
             if value:
                 keys_bind.append('{} = ?'.format(key))
                 values.append(value)
+        if not values:
+            return
         values.append(work_item_id)  # for 'WHERE' clause
         cur = self.conn.cursor()
         cur.execute("UPDATE testcases SET {} WHERE id = ?".format(','.join(keys_bind)), values)
@@ -131,9 +133,12 @@ class PolarionCFMEPlugin(object):
         report = outcome.get_result()
         result = None
         comment = None
+        last_status = None
 
-        if report.when == 'call' and report.passed:
-            result = 'passed'
+        if report.when == 'call':
+            last_status = report.outcome
+            if report.passed:
+                result = 'passed'
         elif report.when == 'setup' and report.skipped:
             try:
                 comment = item.get_marker('skipif').kwargs['reason']
@@ -151,8 +156,8 @@ class PolarionCFMEPlugin(object):
         testrun_record = dict(
             verdict=result,
             comment=comment,
-            last_status=report.outcome,
-            time=str(report.duration))
+            last_status=last_status,
+            time=str(report.duration) if result else None)
         self.testcase_set_record(item.polarion_work_item_id, **testrun_record)
 
     def pytest_unconfigure(self):
