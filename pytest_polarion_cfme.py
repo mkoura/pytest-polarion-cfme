@@ -75,10 +75,6 @@ class PolarionCFMEPlugin(object):
         start = unique_id.find(self.TESTCASE_ID_BASE)
         if start > 0:
             unique_id = unique_id[start:]
-        polarion_testcase_id = unique_id
-        param_index = polarion_testcase_id.rfind('[')
-        if param_index > 0:
-            polarion_testcase_id = polarion_testcase_id[:param_index]
 
         return unique_id
 
