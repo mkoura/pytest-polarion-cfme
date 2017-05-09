@@ -1,58 +1,40 @@
 ====================
 pytest-polarion-cfme
 ====================
-pytest-polarion-cfme is a pytest plugin for collecting test cases based on
-Polarion Test Run and for recording test results in Polarion.
+pytest-polarion-cfme is a pytest plugin for collecting test cases and recording
+test results to database.
 
-From set of tests specified on command line the plugin is able to select such
-tests that have no result (i.e. were not executed) in the specified Polarion
-Test Run (but are present there) and that are assigned to person with specified
-'id'.
+From set of test cases specified on command line the plugin selects such test
+cases that are present in the database and have no reportable result yet.
 
-After executing test the plugin can record their results in Polarion. By
-default passed and blocked (tests with blocker or 'skipif') tests are recorded.
+After executing a test case the plugin records its result in the database. By
+default results for passed and blocked (test cases with blocker or 'skipif')
+test cases are recorded.
 
-It is tailored to work with test case ids used by CFME QE team.
-
-Requires 'pylarion' library that is not public at the moment.
-
-Inspired by https://github.com/avi3tal/pytest-polarion
+It is tailored to work with test case ids and blockers used by CFME QE team.
 
 
-Example commands
-----------------
-From '<tests>' select and run such tests that have no result in Polarion Test Run
-'<run name>'. Record tests that passed or that are blocked::
+Usage
+-----
+Generate the sqlite3 file out of the CSV file exported from Polarion. Use the
+``csv2sqlite.py`` from dump2polarion_ for this.
 
-    $ py.test --polarion-run <run_name> <tests>
+From all test cases available to pytest select and run those that are present
+in the database and have no reportable result. Record results for test cases
+that passed or that are blocked::
 
-From tests located in 'dir/with/tests/' select and run such tests that have no
-result in Polarion Test Run '<run name>', are assigned to person with '<id>',
-their names contain 'string expression' and their importance is medium or higher::
+    $ py.test --db <db_file.sqlite3>
 
-    $ py.test --polarion-run <run_name> --polarion-assignee <id> --polarion-importance medium+ -k 'string expression' dir/with/tests/
+Submit results to Polarion® xunit importer using ``dump2polarion.py`` from dump2polarion_.
 
-See complete help::
-
-    $ py.test --help
+.. _dump2polarion: https://github.com/mkoura/dump2polarion
 
 
 Install
 -------
-For CFME QE specific install instructions see https://mojo.redhat.com/docs/DOC-1098563 (accessible only from internal network).
-
-Install pylarion first::
-
-    $ cd pylarion_repo
-    $ pip install .
-
-Create and edit pylarion config file ~/.pylarion according to Pylarion install instructions.
+For CFME QE specific instructions see https://mojo.redhat.com/docs/DOC-1098563
+(accessible only from internal network).
 
 Install this plugin::
 
-    $ cd pytest-polarion-cfme_repo
     $ pip install .
-
-or without cloning the repo::
-
-   $ pip install https://github.com/mkoura/pytest-polarion-cfme/archive/master.tar.gz
