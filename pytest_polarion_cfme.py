@@ -41,6 +41,7 @@ def create_db_connection(db_file):
 class PolarionCFMEPlugin(object):
     """Gets Test Cases info and record test results in database."""
 
+    # specific to CFME (RHCF3)
     SEARCHES = [
         'Skipping due to these blockers',
         'BZ ?[0-9]+',
@@ -54,18 +55,30 @@ class PolarionCFMEPlugin(object):
         self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
-    def _cache_testcase_ids(cache, testcases):
-        """Extends Test Case ids cache."""
-        for testcase in testcases:
-            work_item_id, title, testcase_id = testcase
-            unique_id = testcase_id
-            param_index = title.rfind('[')
-            if param_index > 0:
-                unique_id += title[param_index:]
-            cache[unique_id] = work_item_id
+    def get_polarion_uniq_id(title, testcase_id):
+        """Get unique id for Polarion Test Case (Work Item).
 
-    def guess_unique_id(self, item):
-        """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion."""
+        The unique id generated here corresponds to the unique id obtained from pytest item.
+        """
+        unique_id = testcase_id
+        param_index = title.rfind('[')
+        if param_index > 0:
+            unique_id += title[param_index:]
+
+        return unique_id
+
+    def get_pytest_uniq_id(self, item):
+        """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion.
+
+        In case of RHCF3 project the Test Case ID
+        ``cfme.tests.infrastructure.test_vm_power_control.TestDeleteViaREST.test_delete``
+        corresponds to the `cfme/tests/infrastructure/test_vm_power_control.py` file,
+        `TestDeleteViaREST` class and `test_delete` test.
+        Coupled with test parameter `smartvm` this constructs the unique id
+        `cfme.tests.infrastructure.test_vm_power_control.TestDeleteViaREST.test_delete[smartvm]`.
+
+        This way it's possible to match Node ID of pytest item to Polarion Test Case ID + parameter.
+        """
         unique_id = (item.nodeid.
                      replace('/', '.').
                      replace('::()', '').
@@ -78,17 +91,25 @@ class PolarionCFMEPlugin(object):
         return unique_id
 
     def db_collect_testcases(self, items):
-        """Finds corresponding Polarion work item ID for each test."""
+        """Finds corresponding Polarion Work Item ID for collected test cases
+        and return list of test cases found in the database."""
         cur = self.conn.cursor()
         cur.execute(
             "SELECT id, title, testcaseid FROM testcases WHERE verdict is null or verdict = ''")
-        testcases_list = cur.fetchall()
-        cached_ids = {}
-        self._cache_testcase_ids(cached_ids, testcases_list)
+        polarion_testcases = cur.fetchall()
 
+        # cache Work Item ID for each Polarion Test Case
+        cached_ids = {}
+        for testcase in polarion_testcases:
+            work_item_id, title, testcase_id = testcase
+            unique_id = self.get_polarion_uniq_id(title, testcase_id)
+            cached_ids[unique_id] = work_item_id
+
+        # save Work Item ID to corresponding items collected by pytest
+        # and get list of test cases to run
         found = []
         for testcase in items:
-            unique_id = self.guess_unique_id(testcase)
+            unique_id = self.get_pytest_uniq_id(testcase)
             work_item_id = cached_ids.get(unique_id)
             if work_item_id:
                 testcase.polarion_work_item_id = work_item_id
