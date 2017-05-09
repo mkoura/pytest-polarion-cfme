@@ -16,12 +16,13 @@ It is tailored to work with test case ids and blockers used by CFME QE team.
 
 Usage
 -----
-Generate the sqlite3 file out of the CSV file exported from Polarion. Use the
+Generate sqlite3 file out of the CSV file exported from Polarion®. Use the
 ``csv2sqlite.py`` from dump2polarion_ for this.
 
-From all test cases available to pytest select and run those that are present
-in the database and have no reportable result. Record results for test cases
-that passed or that are blocked::
+From test cases available to pytest (you can limit these using standard pytest
+features like ``-k`` or specifying file/directory path) select and run those
+that are present in the database and have no reportable result. Record results
+for test cases that passed or that are blocked::
 
     $ py.test --db <db_file.sqlite3>
 
