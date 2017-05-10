@@ -4,11 +4,7 @@
 from __future__ import print_function, unicode_literals
 
 import re
-import os
-
 import sqlite3
-from sqlite3 import Error
-
 import pytest
 
 
@@ -23,19 +19,26 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Registers plugin."""
-    if config.getoption('db') is None:
+    db_file = config.getoption('db')
+    if db_file is None:
         return
 
-    config.pluginmanager.register(PolarionCFMEPlugin(config.getoption('db')), '_polarion_cfme')
+    with open(db_file):
+        # test that file can be accessed
+        pass
+    conn = sqlite3.connect(db_file)
 
+    # check that all required columns are there
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM testcases")
+    columns = [description[0] for description in cur.description]
+    missing_columns = [k for k in ('id', 'testcaseid') if k not in columns]
+    if missing_columns:
+        pytest.fail(
+            "The database `{}` is missing following columns: {}".format(
+                db_file, ', '.join(missing_columns)))
 
-def create_db_connection(db_file):
-    """Creates a database connection."""
-    try:
-        conn = sqlite3.connect(os.path.expanduser(db_file))
-        return conn
-    except Error as err:
-        pytest.fail("{}".format(err))
+    config.pluginmanager.register(PolarionCFMEPlugin(conn), '_polarion_cfme')
 
 
 class PolarionCFMEPlugin(object):
@@ -50,8 +53,8 @@ class PolarionCFMEPlugin(object):
     ]
     TESTCASE_ID_BASE = 'cfme.tests'
 
-    def __init__(self, db_file):
-        self.conn = create_db_connection(db_file)
+    def __init__(self, conn):
+        self.conn = conn
         self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
