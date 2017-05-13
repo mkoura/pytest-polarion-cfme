@@ -4,6 +4,7 @@
 from __future__ import print_function, unicode_literals
 
 import re
+import datetime
 import sqlite3
 import pytest
 
@@ -15,6 +16,10 @@ def pytest_addoption(parser):
                     default=None,
                     action='store',
                     help="SQLite file with tests results (default: %default)")
+    group.addoption('--skip-executed',
+                    default=False,
+                    action='store_true',
+                    help="Run only tests that were not executed yet (default: %default)")
 
 
 def pytest_configure(config):
@@ -26,13 +31,15 @@ def pytest_configure(config):
     with open(db_file):
         # test that file can be accessed
         pass
-    conn = sqlite3.connect(db_file)
+    conn = sqlite3.connect(db_file, detect_types=sqlite3.PARSE_DECLTYPES)
 
     # check that all required columns are there
     cur = conn.cursor()
     cur.execute("SELECT * FROM testcases")
     columns = [description[0] for description in cur.description]
-    missing_columns = [k for k in ('id', 'testcaseid') if k not in columns]
+    required_columns = (
+        'id', 'title', 'testcaseid', 'verdict', 'comment', 'last_status', 'time', 'sqltime')
+    missing_columns = [k for k in required_columns if k not in columns]
     if missing_columns:
         pytest.fail(
             "The database `{}` is missing following columns: {}".format(
@@ -93,12 +100,15 @@ class PolarionCFMEPlugin(object):
 
         return unique_id
 
-    def db_collect_testcases(self, items):
+    def db_collect_testcases(self, items, skip_executed=False):
         """Finds corresponding Polarion Work Item ID for collected test cases
         and return list of test cases found in the database."""
+        select = ("SELECT id, title, testcaseid FROM testcases "
+                  "WHERE (verdict IS NULL OR verdict = '')",
+                  "AND (last_status IS NULL or last_status = '')")
+        select = ' '.join(select) if skip_executed else select[0]
         cur = self.conn.cursor()
-        cur.execute(
-            "SELECT id, title, testcaseid FROM testcases WHERE verdict is null or verdict = ''")
+        cur.execute(select)
         polarion_testcases = cur.fetchall()
 
         # cache Work Item ID for each Polarion Test Case
@@ -123,7 +133,7 @@ class PolarionCFMEPlugin(object):
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, config, items):
         """Deselects tests that are not in the database."""
-        remaining = self.db_collect_testcases(items)
+        remaining = self.db_collect_testcases(items, config.getoption('skip_executed'))
 
         deselect = set(items) - set(remaining)
         if deselect:
@@ -146,7 +156,12 @@ class PolarionCFMEPlugin(object):
         values.append(work_item_id)  # for 'WHERE' clause
         cur = self.conn.cursor()
         cur.execute("UPDATE testcases SET {} WHERE id = ?".format(','.join(keys_bind)), values)
-        self.conn.commit()
+        try:
+            self.conn.commit()
+        # pylint: disable=broad-except
+        except Exception:
+            # will succeed next time hopefully
+            pass
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item):
@@ -157,31 +172,37 @@ class PolarionCFMEPlugin(object):
         result = None
         comment = None
         last_status = None
+        time = None
 
         if report.when == 'call':
             last_status = report.outcome
+            time = str(report.duration)
             if report.passed:
                 result = 'passed'
-        elif report.when == 'setup' and report.skipped:
-            try:
-                comment = item.get_marker('skipif').kwargs['reason']
-            except AttributeError:
-                comment = None
-            if not comment and report.longrepr:
-                reason = report.longrepr[2]
-                if re.match(self.valid_skips, reason):
-                    comment = reason
+        elif report.when == 'setup' and not report.passed:
+            last_status = 'error' if report.failed else report.outcome
+            if report.skipped:
+                try:
+                    comment = item.get_marker('skipif').kwargs['reason']
+                except AttributeError:
+                    comment = None
+                if not comment and report.longrepr:
+                    reason = report.longrepr[2]
+                    if re.match(self.valid_skips, reason):
+                        comment = reason
 
-            # found reason to mark test as 'skipped'
-            if comment:
-                result = 'skipped'
+                # found reason to mark test as 'skipped'
+                if comment:
+                    result = 'skipped'
 
-        testrun_record = dict(
-            verdict=result,
-            comment=comment,
-            last_status=last_status,
-            time=str(report.duration) if result else None)
-        self.testcase_set_record(item.polarion_work_item_id, **testrun_record)
+        if last_status:
+            testrun_record = dict(
+                verdict=result,
+                comment=comment,
+                last_status=last_status,
+                time=time,
+                sqltime=datetime.datetime.utcnow())
+            self.testcase_set_record(item.polarion_work_item_id, **testrun_record)
 
     def pytest_unconfigure(self):
         """Closes database connection."""
