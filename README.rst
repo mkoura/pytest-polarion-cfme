@@ -26,6 +26,12 @@ for test cases that passed or that are blocked::
 
     $ py.test --db <db_file.sqlite3>
 
+To exclude tests that were already executed but haven't passed, add
+``--skip-executed`` command line option (i.e. failing/skipped tests are not
+re-run and it saves time)::
+
+    $ py.test --db <db_file.sqlite3> --skip-executed
+
 Submit results to Polarion® xunit importer using ``dump2polarion.py`` from dump2polarion_.
 
 .. _dump2polarion: https://github.com/mkoura/dump2polarion
