@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pytest_polarion_cfme',
-    version='0.1.0',
+    version='0.1.1',
     url='https://github.com/mkoura/pytest-polarion-cfme',
     description='pytest plugin for collecting test cases and recording test results',
     long_description=open('README.rst').read().strip(),
