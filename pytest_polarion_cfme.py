@@ -188,7 +188,7 @@ class PolarionCFMEPlugin(object):
                     comment = None
                 if not comment and report.longrepr:
                     reason = report.longrepr[2]
-                    if re.match(self.valid_skips, reason):
+                    if re.search(self.valid_skips, reason):
                         comment = reason
 
                 # found reason to mark test as 'skipped'
