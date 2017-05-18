@@ -105,7 +105,7 @@ class PolarionCFMEPlugin(object):
         and return list of test cases found in the database."""
         select = ("SELECT id, title, testcaseid FROM testcases "
                   "WHERE (verdict IS NULL OR verdict = '')",
-                  "AND (last_status IS NULL or last_status = '')")
+                  "AND (last_status IS NULL or last_status = '' or last_status = 'skipped')")
         select = ' '.join(select) if skip_executed else select[0]
         cur = self.conn.cursor()
         cur.execute(select)
