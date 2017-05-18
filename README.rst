@@ -1,6 +1,10 @@
 ====================
 pytest-polarion-cfme
 ====================
+
+NOTE: pytest-polarion-cfme is no longer using pylarion as pylarion is being
+deprecated. As a consequence command line options changed too.
+
 pytest-polarion-cfme is a pytest plugin for collecting test cases and recording
 test results to database.
 
