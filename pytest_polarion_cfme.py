@@ -65,7 +65,7 @@ class PolarionCFMEPlugin(object):
         self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
 
     @staticmethod
-    def get_polarion_uniq_id(title, testcase_id):
+    def get_polarion_uniq_ids(title, testcase_id):
         """Get unique id for Polarion Test Case (Work Item).
 
         The unique id generated here corresponds to the unique id obtained from pytest item.
@@ -74,8 +74,9 @@ class PolarionCFMEPlugin(object):
         param_index = title.rfind('[')
         if param_index > 0:
             unique_id += title[param_index:]
+        unique_id_old = '{}.{}'.format(testcase_id, title)
 
-        return unique_id
+        return (unique_id, unique_id_old)
 
     def get_pytest_uniq_id(self, item):
         """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion.
@@ -115,8 +116,8 @@ class PolarionCFMEPlugin(object):
         cached_ids = {}
         for testcase in polarion_testcases:
             work_item_id, title, testcase_id = testcase
-            unique_id = self.get_polarion_uniq_id(title, testcase_id)
-            cached_ids[unique_id] = work_item_id
+            for uid in self.get_polarion_uniq_ids(title, testcase_id):
+                cached_ids[uid] = work_item_id
 
         # save Work Item ID to corresponding items collected by pytest
         # and get list of test cases to run
