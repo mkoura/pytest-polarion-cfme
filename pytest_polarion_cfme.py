@@ -66,14 +66,15 @@ class PolarionCFMEPlugin(object):
 
     @staticmethod
     def get_polarion_uniq_ids(title, testcase_id):
-        """Get unique id for Polarion Test Case (Work Item).
+        """Get unique ids for Polarion Test Case (Work Item).
 
-        The unique id generated here corresponds to the unique id obtained from pytest item.
+        The unique ids generated here corresponds to the unique id obtained from pytest item.
         """
         unique_id = testcase_id
         param_index = title.rfind('[')
         if param_index > 0:
             unique_id += title[param_index:]
+        # old Test Case IDs doesn't contain testcase name
         unique_id_old = '{}.{}'.format(testcase_id, title)
 
         return (unique_id, unique_id_old)
