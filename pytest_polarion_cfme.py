@@ -62,7 +62,7 @@ class PolarionCFMEPlugin(object):
 
     def __init__(self, conn):
         self.conn = conn
-        self.valid_skips = '(' + ')|('.join(self.SEARCHES) + ')'
+        self.valid_skips = re.compile('(' + ')|('.join(self.SEARCHES) + ')')
 
     @staticmethod
     def get_polarion_uniq_ids(title, testcase_id):
@@ -190,7 +190,7 @@ class PolarionCFMEPlugin(object):
                     comment = None
                 if not comment and report.longrepr:
                     reason = report.longrepr[2]
-                    if re.search(self.valid_skips, reason):
+                    if self.valid_skips.search(reason):
                         comment = reason
 
                 # found reason to mark test as 'skipped'
