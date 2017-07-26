@@ -15,7 +15,7 @@ After executing a test case the plugin records its result in the database. By
 default results for passed and blocked (test cases with blocker or 'skipif')
 test cases are recorded.
 
-It is tailored to work with test case ids and blockers used by CFME QE team.
+It is tailored for the CFME QE team.
 
 
 Usage

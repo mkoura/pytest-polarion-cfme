@@ -3,9 +3,10 @@
 
 from __future__ import print_function, unicode_literals
 
-import re
 import datetime
+import re
 import sqlite3
+
 import pytest
 
 
@@ -38,7 +39,7 @@ def pytest_configure(config):
     cur.execute("SELECT * FROM testcases")
     columns = [description[0] for description in cur.description]
     required_columns = (
-        'id', 'title', 'testcaseid', 'verdict', 'comment', 'last_status', 'time', 'sqltime')
+        'id', 'title', 'verdict', 'comment', 'last_status', 'time', 'sqltime')
     missing_columns = [k for k in required_columns if k not in columns]
     if missing_columns:
         pytest.fail(
@@ -58,54 +59,24 @@ class PolarionCFMEPlugin(object):
         'GH ?#?[0-9]+',
         'GH#ManageIQ',
     ]
-    TESTCASE_ID_BASE = 'cfme.tests'
 
     def __init__(self, conn):
         self.conn = conn
         self.valid_skips = re.compile('(' + ')|('.join(self.SEARCHES) + ')')
 
     @staticmethod
-    def get_polarion_uniq_ids(title, testcase_id):
-        """Get unique ids for Polarion Test Case (Work Item).
-
-        The unique ids generated here corresponds to the unique id obtained from pytest item.
-        """
-        unique_id = testcase_id
-        param_index = title.rfind('[')
-        if param_index > 0:
-            unique_id += title[param_index:]
-        # old Test Case IDs doesn't contain testcase name
-        unique_id_old = '{}.{}'.format(testcase_id, title)
-
-        return (unique_id, unique_id_old)
-
-    def get_pytest_uniq_id(self, item):
-        """Guess how the test's 'Node ID' corresponds to Work Item 'Test Case ID' in Polarion.
-
-        In case of RHCF3 project the Test Case ID
-        ``cfme.tests.infrastructure.test_vm_power_control.TestDeleteViaREST.test_delete``
-        corresponds to the `cfme/tests/infrastructure/test_vm_power_control.py` file,
-        `TestDeleteViaREST` class and `test_delete` test.
-        Coupled with test parameter `smartvm` this constructs the unique id
-        `cfme.tests.infrastructure.test_vm_power_control.TestDeleteViaREST.test_delete[smartvm]`.
-
-        This way it's possible to match Node ID of pytest item to Polarion Test Case ID + parameter.
-        """
-        unique_id = (item.nodeid.
-                     replace('/', '.').
-                     replace('::()', '').
-                     replace('::', '.').
-                     replace('.py', ''))
-        start = unique_id.find(self.TESTCASE_ID_BASE)
-        if start > 0:
-            unique_id = unique_id[start:]
-
-        return unique_id
+    def get_testcase_name(item):
+        """Gets Polarion test case name out of the Node ID."""
+        return (item.nodeid[item.nodeid.find('::') + 2:]
+                .replace('::()', '')
+                .replace('::', '.'))
 
     def db_collect_testcases(self, items, skip_executed=False):
-        """Finds corresponding Polarion Work Item ID for collected test cases
-        and return list of test cases found in the database."""
-        select = ("SELECT id, title, testcaseid FROM testcases "
+        """Finds corresponding Polarion Work Item ID for collected test cases.
+
+        Returns list of test cases found in the database.
+        """
+        select = ("SELECT id, title FROM testcases "
                   "WHERE (verdict IS NULL OR verdict = '')",
                   "AND (last_status IS NULL or last_status = '' or last_status = 'skipped')")
         select = ' '.join(select) if skip_executed else select[0]
@@ -113,18 +84,21 @@ class PolarionCFMEPlugin(object):
         cur.execute(select)
         polarion_testcases = cur.fetchall()
 
-        # cache Work Item ID for each Polarion Test Case
+        # cache Work Item ID of every Polarion Test Case
         cached_ids = {}
         for testcase in polarion_testcases:
-            work_item_id, title, testcase_id = testcase
-            for uid in self.get_polarion_uniq_ids(title, testcase_id):
-                cached_ids[uid] = work_item_id
+            work_item_id, title = testcase
+            if title in cached_ids:
+                print('{} is not unique, skipping'.format(title))
+                del cached_ids[title]
+                continue
+            cached_ids[title] = work_item_id
 
         # save Work Item ID to corresponding items collected by pytest
         # and get list of test cases to run
         found = []
         for testcase in items:
-            unique_id = self.get_pytest_uniq_id(testcase)
+            unique_id = self.get_testcase_name(testcase)
             work_item_id = cached_ids.get(unique_id)
             if work_item_id:
                 testcase.polarion_work_item_id = work_item_id
