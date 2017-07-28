@@ -139,6 +139,14 @@ class PolarionCFMEPlugin(object):
             # will succeed next time hopefully
             pass
 
+    def get_skip_reason(self, report):
+        """Check if there's a reason to mark test as 'skipped'."""
+        if report.longrepr:
+            reason = report.longrepr[2]
+            if self.valid_skips.search(reason):
+                return reason
+        return
+
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_makereport(self, item):
         """Checks test result and update Test Case record in database."""
@@ -155,6 +163,10 @@ class PolarionCFMEPlugin(object):
             time = str(report.duration)
             if report.passed:
                 result = 'passed'
+            elif report.skipped:
+                comment = self.get_skip_reason(report)
+                if comment:
+                    result = 'skipped'
         elif report.when == 'setup' and not report.passed:
             last_status = 'error' if report.failed else report.outcome
             if report.skipped:
@@ -162,12 +174,9 @@ class PolarionCFMEPlugin(object):
                     comment = item.get_marker('skipif').kwargs['reason']
                 except AttributeError:
                     comment = None
-                if not comment and report.longrepr:
-                    reason = report.longrepr[2]
-                    if self.valid_skips.search(reason):
-                        comment = reason
 
-                # found reason to mark test as 'skipped'
+                if not comment:
+                    comment = self.get_skip_reason(report)
                 if comment:
                     result = 'skipped'
 
