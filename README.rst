@@ -36,7 +36,7 @@ re-run and it saves time)::
 
     $ py.test --db <db_file.sqlite3> --skip-executed
 
-Submit results to Polarion® xunit importer using ``dump2polarion.py`` from dump2polarion_.
+Submit results to Polarion® xunit importer using ``polarion_dumper.py`` from dump2polarion_.
 
 .. _dump2polarion: https://github.com/mkoura/dump2polarion
 
