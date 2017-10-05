@@ -48,4 +48,4 @@ For CFME QE specific instructions see https://mojo.redhat.com/docs/DOC-1098563
 
 Install this plugin::
 
-    $ pip install .
+    $ pip install pytest-polarion-cfme
