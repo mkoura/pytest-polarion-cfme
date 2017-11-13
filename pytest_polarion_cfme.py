@@ -55,6 +55,7 @@ class PolarionCFMEPlugin(object):
     # specific to CFME (RHCF3)
     SEARCHES = [
         'Skipping due to these blockers',
+        'SKIPME:',
         'BZ ?[0-9]+',
         'GH ?#?[0-9]+',
         'GH#ManageIQ',
