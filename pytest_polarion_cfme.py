@@ -121,16 +121,24 @@ class PolarionCFMEPlugin(object):
 
     def testcase_set_record(self, work_item_id, **kwargs):
         """Updates Test Case record in database."""
+        cur = self.conn.cursor()
+
+        cur.execute("SELECT verdict FROM testcases WHERE id = ?", (work_item_id, ))
+        verdict, = cur.fetchone()
+        # don't override existing verdict
+        if verdict:
+            kwargs.pop('verdict', None)
+
         values = []
         keys_bind = []
-        for key, value in kwargs.iteritems():
+        for key, value in kwargs.items():
             if value:
                 keys_bind.append('{} = ?'.format(key))
                 values.append(value)
         if not values:
             return
         values.append(work_item_id)  # for 'WHERE' clause
-        cur = self.conn.cursor()
+
         cur.execute("UPDATE testcases SET {} WHERE id = ?".format(','.join(keys_bind)), values)
         try:
             self.conn.commit()
