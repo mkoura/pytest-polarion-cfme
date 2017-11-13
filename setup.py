@@ -16,10 +16,12 @@ setup(
     keywords=['polarion', 'py.test', 'pytest', 'testing'],
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
         'Framework :: Pytest',
         'Topic :: Software Development :: Testing',
         'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7']
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Intended Audience :: Developers'],
 )
