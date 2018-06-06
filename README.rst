@@ -1,6 +1,8 @@
 ====================
-pytest-polarion-cfme
+Moved to https://gitlab.com/mkourim/pytest-polarion-cfme
 ====================
+
+
 
 NOTE: pytest-polarion-cfme is no longer using pylarion as pylarion is being
 deprecated. As a consequence command line options changed too.
